@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Play, Pause, Download, Clock, Scissors, Volume2, VolumeX, Maximize2 } from "lucide-react";
 import Button from "@/components/ui/Button";
@@ -23,6 +23,26 @@ export default function ClipCard({ clip }) {
   const [muted, setMuted] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [totalDuration, setTotalDuration] = useState(duration || 0);
+
+  // Оптимизация загрузки (Lazy Loading)
+  const containerRef = useRef(null);
+  const [isVisible, setIsVisible] = useState(false);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          setIsVisible(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "600px" } // Загружаем метаданные видео немного заранее (за 600px до прокрутки)
+    );
+
+    if (containerRef.current) observer.observe(containerRef.current);
+    
+    return () => observer.disconnect();
+  }, []);
 
   const togglePlay = (e) => {
     e?.stopPropagation();
@@ -102,6 +122,7 @@ export default function ClipCard({ clip }) {
 
   return (
     <div
+      ref={containerRef}
       className="group flex flex-col glass-card rounded-2xl overflow-hidden cursor-pointer"
       onClick={openWatch}
     >
@@ -116,7 +137,7 @@ export default function ClipCard({ clip }) {
           onTimeUpdate={() => videoRef.current && setCurrentTime(videoRef.current.currentTime)}
           onLoadedMetadata={() => videoRef.current && setTotalDuration(videoRef.current.duration)}
           playsInline
-          preload="none"
+          preload={isVisible ? "metadata" : "none"}
         />
 
         <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-black/70 pointer-events-none" />
