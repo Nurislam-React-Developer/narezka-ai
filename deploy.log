@@ -1,0 +1,279 @@
+===========================================
+🚀 Начало деплоя проекта на сервер root@185.214.74.207
+===========================================
+[1/4] Подготовка скрипта установки на сервере...
+[2/4] Копирование файлов проекта на сервер...
+spawn rsync -av -e ssh -o StrictHostKeyChecking=no --exclude node_modules --exclude .next --exclude backend/venv --exclude .git --exclude backend/inputs --exclude backend/outputs ./ root@185.214.74.207:/root/narezka/
+root@185.214.74.207's password: 
+sending incremental file list
+./
+deploy.log
+deploy_simple.sh
+install_on_server.sh
+backend/
+backend/routes/__pycache__/
+backend/services/
+backend/services/ffmpeg.py
+src/app/
+src/app/error.jsx
+src/app/layout.jsx
+src/app/not-found.jsx
+src/components/features/
+src/components/features/HomeContent.jsx
+src/components/features/WatermarkContent.jsx
+src/components/layout/
+src/components/layout/ToastProvider.jsx
+src/components/ui/
+src/components/ui/Toast.jsx
+src/lib/
+src/lib/notification.js
+src/lib/useToast.js
+
+sent 29,904 bytes  received 722 bytes  6,805.78 bytes/sec
+total size is 318,141  speedup is 10.39
+[3/4] Копирование установочного скрипта...
+spawn scp -o StrictHostKeyChecking=no install_on_server.sh root@185.214.74.207:/root/
+root@185.214.74.207's password: 
+install_on_server.sh                            0%    0     0.0KB/s   --:-- ETAinstall_on_server.sh                          100% 1352     8.2KB/s   00:00    
+[4/4] Запуск установки на сервере (это может занять пару минут)...
+spawn ssh -o StrictHostKeyChecking=no root@185.214.74.207 chmod +x /root/install_on_server.sh && /root/install_on_server.sh
+root@185.214.74.207's password: 
+➡️ Обновление системы...
+Hit:1 https://deb.nodesource.com/node_20.x nodistro InRelease
+Hit:2 http://archive.ubuntu.com/ubuntu jammy InRelease
+Get:3 http://archive.ubuntu.com/ubuntu jammy-updates InRelease [128 kB]
+Get:4 http://archive.ubuntu.com/ubuntu jammy-backports InRelease [127 kB]
+Get:5 http://archive.ubuntu.com/ubuntu jammy-security InRelease [129 kB]
+Get:6 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages [3325 kB]
+Fetched 3709 kB in 2s (1853 kB/s)
+Reading package lists...
+Reading package lists...
+Building dependency tree...
+Reading state information...
+Calculating upgrade...
+0 upgraded, 0 newly installed, 0 to remove and 0 not upgraded.
+➡️ Установка Node.js, Python, FFmpeg...
+Reading package lists...
+Building dependency tree...
+Reading state information...
+curl is already the newest version (7.81.0-1ubuntu1.23).
+git is already the newest version (1:2.34.1-1ubuntu1.17).
+ufw is already the newest version (0.36.1-4ubuntu0.1).
+ffmpeg is already the newest version (7:4.4.2-0ubuntu0.22.04.1).
+python3-pip is already the newest version (22.0.2+dfsg-1ubuntu0.7).
+python3-venv is already the newest version (3.10.6-1~22.04.1).
+0 upgraded, 0 newly installed, 0 to remove and 0 not upgraded.
+[38;5;79m2026-03-20 18:12:23 - Installing pre-requisites[0m
+
+WARNING: apt does not have a stable CLI interface. Use with caution in scripts.
+
+Hit:1 https://deb.nodesource.com/node_20.x nodistro InRelease
+Hit:2 http://archive.ubuntu.com/ubuntu jammy InRelease
+Hit:3 http://archive.ubuntu.com/ubuntu jammy-updates InRelease
+Hit:4 http://archive.ubuntu.com/ubuntu jammy-backports InRelease
+Hit:5 http://archive.ubuntu.com/ubuntu jammy-security InRelease
+Reading package lists...
+Building dependency tree...
+Reading state information...
+All packages are up to date.
+
+WARNING: apt does not have a stable CLI interface. Use with caution in scripts.
+
+Reading package lists...
+Building dependency tree...
+Reading state information...
+ca-certificates is already the newest version (20240203~22.04.1).
+curl is already the newest version (7.81.0-1ubuntu1.23).
+gnupg is already the newest version (2.2.27-3ubuntu2.5).
+apt-transport-https is already the newest version (2.4.14).
+0 upgraded, 0 newly installed, 0 to remove and 0 not upgraded.
+
+WARNING: apt does not have a stable CLI interface. Use with caution in scripts.
+
+Hit:1 https://deb.nodesource.com/node_20.x nodistro InRelease
+Hit:2 http://archive.ubuntu.com/ubuntu jammy InRelease
+Hit:3 http://archive.ubuntu.com/ubuntu jammy-updates InRelease
+Hit:4 http://archive.ubuntu.com/ubuntu jammy-backports InRelease
+Hit:5 http://archive.ubuntu.com/ubuntu jammy-security InRelease
+Reading package lists...
+Building dependency tree...
+Reading state information...
+All packages are up to date.
+[1;34m2026-03-20 18:12:29 - Repository configured successfully.[0m
+[38;5;79m2026-03-20 18:12:29 - To install Node.js, run: apt install nodejs -y[0m
+[38;5;79m2026-03-20 18:12:29 - You can use N|solid Runtime as a node.js alternative[0m
+[1;32m2026-03-20 18:12:29 - To install N|solid Runtime, run: apt install nsolid -y 
+[0m
+Reading package lists...
+Building dependency tree...
+Reading state information...
+nodejs is already the newest version (20.20.1-1nodesource1).
+0 upgraded, 0 newly installed, 0 to remove and 0 not upgraded.
+➡️ Установка PM2 (чтобы сайт работал 24/7)...
+
+changed 133 packages in 7s
+
+13 packages are looking for funding
+  run `npm fund` for details
+➡️ Настройка бэкенда (FastAPI)...
+Collecting fastapi>=0.111.0
+  Using cached fastapi-0.135.1-py3-none-any.whl (116 kB)
+Collecting uvicorn[standard]>=0.29.0
+  Using cached uvicorn-0.42.0-py3-none-any.whl (68 kB)
+Collecting python-multipart>=0.0.9
+  Using cached python_multipart-0.0.22-py3-none-any.whl (24 kB)
+Collecting yt-dlp>=2024.1.1
+  Using cached yt_dlp-2026.3.17-py3-none-any.whl (3.3 MB)
+Collecting pytubefix>=6.0.0
+  Using cached pytubefix-10.3.8-py3-none-any.whl (1.5 MB)
+Collecting typing-extensions>=4.8.0
+  Using cached typing_extensions-4.15.0-py3-none-any.whl (44 kB)
+Collecting starlette>=0.46.0
+  Using cached starlette-0.52.1-py3-none-any.whl (74 kB)
+Collecting pydantic>=2.7.0
+  Using cached pydantic-2.12.5-py3-none-any.whl (463 kB)
+Collecting typing-inspection>=0.4.2
+  Using cached typing_inspection-0.4.2-py3-none-any.whl (14 kB)
+Collecting annotated-doc>=0.0.2
+  Using cached annotated_doc-0.0.4-py3-none-any.whl (5.3 kB)
+Collecting h11>=0.8
+  Using cached h11-0.16.0-py3-none-any.whl (37 kB)
+Collecting click>=7.0
+  Using cached click-8.3.1-py3-none-any.whl (108 kB)
+Collecting watchfiles>=0.20
+  Using cached watchfiles-1.1.1-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (455 kB)
+Collecting python-dotenv>=0.13
+  Using cached python_dotenv-1.2.2-py3-none-any.whl (22 kB)
+Collecting httptools>=0.6.3
+  Using cached httptools-0.7.1-cp310-cp310-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl (440 kB)
+Collecting pyyaml>=5.1
+  Using cached pyyaml-6.0.3-cp310-cp310-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (770 kB)
+Collecting websockets>=10.4
+  Using cached websockets-16.0-cp310-cp310-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl (183 kB)
+Collecting uvloop>=0.15.1
+  Using cached uvloop-0.22.1-cp310-cp310-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (3.7 MB)
+Collecting nodejs-wheel-binaries>=22.20.0
+  Using cached nodejs_wheel_binaries-24.14.0-py2.py3-none-manylinux_2_28_x86_64.whl (59.8 MB)
+Collecting aiohttp>=3.12.13
+  Using cached aiohttp-3.13.3-cp310-cp310-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (1.7 MB)
+Collecting async-timeout<6.0,>=4.0
+  Using cached async_timeout-5.0.1-py3-none-any.whl (6.2 kB)
+Collecting propcache>=0.2.0
+  Using cached propcache-0.4.1-cp310-cp310-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (196 kB)
+Collecting aiohappyeyeballs>=2.5.0
+  Using cached aiohappyeyeballs-2.6.1-py3-none-any.whl (15 kB)
+Collecting frozenlist>=1.1.1
+  Using cached frozenlist-1.8.0-cp310-cp310-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl (219 kB)
+Collecting yarl<2.0,>=1.17.0
+  Using cached yarl-1.23.0-cp310-cp310-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (102 kB)
+Collecting multidict<7.0,>=4.5
+  Using cached multidict-6.7.1-cp310-cp310-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (243 kB)
+Collecting attrs>=17.3.0
+  Using cached attrs-26.1.0-py3-none-any.whl (67 kB)
+Collecting aiosignal>=1.4.0
+  Using cached aiosignal-1.4.0-py3-none-any.whl (7.5 kB)
+Collecting pydantic-core==2.41.5
+  Using cached pydantic_core-2.41.5-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (2.1 MB)
+Collecting annotated-types>=0.6.0
+  Using cached annotated_types-0.7.0-py3-none-any.whl (13 kB)
+Collecting anyio<5,>=3.6.2
+  Using cached anyio-4.12.1-py3-none-any.whl (113 kB)
+Collecting idna>=2.8
+  Using cached idna-3.11-py3-none-any.whl (71 kB)
+Collecting exceptiongroup>=1.0.2
+  Using cached exceptiongroup-1.3.1-py3-none-any.whl (16 kB)
+Installing collected packages: yt-dlp, websockets, uvloop, typing-extensions, pyyaml, python-multipart, python-dotenv, propcache, nodejs-wheel-binaries, idna, httptools, h11, frozenlist, click, attrs, async-timeout, annotated-types, annotated-doc, aiohappyeyeballs, uvicorn, typing-inspection, pydantic-core, multidict, exceptiongroup, aiosignal, yarl, pydantic, anyio, watchfiles, starlette, aiohttp, pytubefix, fastapi
+Successfully installed aiohappyeyeballs-2.6.1 aiohttp-3.13.3 aiosignal-1.4.0 annotated-doc-0.0.4 annotated-types-0.7.0 anyio-4.12.1 async-timeout-5.0.1 attrs-26.1.0 click-8.3.1 exceptiongroup-1.3.1 fastapi-0.135.1 frozenlist-1.8.0 h11-0.16.0 httptools-0.7.1 idna-3.11 multidict-6.7.1 nodejs-wheel-binaries-24.14.0 propcache-0.4.1 pydantic-2.12.5 pydantic-core-2.41.5 python-dotenv-1.2.2 python-multipart-0.0.22 pytubefix-10.3.8 pyyaml-6.0.3 starlette-0.52.1 typing-extensions-4.15.0 typing-inspection-0.4.2 uvicorn-0.42.0 uvloop-0.22.1 watchfiles-1.1.1 websockets-16.0 yarl-1.23.0 yt-dlp-2026.3.17
+➡️ Настройка фронтенда (Next.js)...
+
+up to date, audited 55 packages in 2s
+
+15 packages are looking for funding
+  run `npm fund` for details
+
+1 moderate severity vulnerability
+
+To address all issues, run:
+  npm audit fix --force
+
+Run `npm audit` for details.
+
+> narezka@0.1.0 build
+> next build
+
+▲ Next.js 16.1.6 (Turbopack)
+- Environments: .env.local
+- Experiments (use with caution):
+  · optimizePackageImports
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 5.7s
+  Running TypeScript ...
+  Collecting page data using 1 worker ...
+  Generating static pages using 1 worker (0/9) ...
+  Generating static pages using 1 worker (2/9) 
+  Generating static pages using 1 worker (4/9) 
+  Generating static pages using 1 worker (6/9) 
+✓ Generating static pages using 1 worker (9/9) in 314.1ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ○ /history
+├ ○ /results
+├ ○ /settings
+├ ○ /watch
+└ ○ /watermark
+
+
+○  (Static)  prerendered as static content
+
+➡️ Запуск процессов в фоне (PM2)...
+[PM2] Applying action stopProcessId on app [all](ids: [ 0, 1 ])
+[PM2] [api](0) ✓
+[PM2] [frontend](1) ✓
+┌────┬─────────────┬─────────────┬─────────┬─────────┬──────────┬────────┬──────┬───────────┬──────────┬──────────┬──────────┬──────────┐
+│ id │ name        │ namespace   │ version │ mode    │ pid      │ uptime │ ↺    │ status    │ cpu      │ mem      │ user     │ watching │
+├────┼─────────────┼─────────────┼─────────┼─────────┼──────────┼────────┼──────┼───────────┼──────────┼──────────┼──────────┼──────────┤
+│ 0  │ api         │ default     │ N/A     │ fork    │ 0        │ 0      │ 0    │ stopped   │ 0%       │ 0b       │ root     │ disabled │
+│ 1  │ frontend    │ default     │ N/A     │ fork    │ 0        │ 0      │ 0    │ stopped   │ 0%       │ 0b       │ root     │ disabled │
+└────┴─────────────┴─────────────┴─────────┴─────────┴──────────┴────────┴──────┴───────────┴──────────┴──────────┴──────────┴──────────┘
+[PM2] Applying action deleteProcessId on app [all](ids: [ 0, 1 ])
+[PM2] [api](0) ✓
+[PM2] [frontend](1) ✓
+┌────┬───────────┬─────────────┬─────────┬─────────┬──────────┬────────┬──────┬───────────┬──────────┬──────────┬──────────┬──────────┐
+│ id │ name      │ namespace   │ version │ mode    │ pid      │ uptime │ ↺    │ status    │ cpu      │ mem      │ user     │ watching │
+└────┴───────────┴─────────────┴─────────┴─────────┴──────────┴────────┴──────┴───────────┴──────────┴──────────┴──────────┴──────────┘
+[PM2] Starting /usr/bin/bash in fork_mode (1 instance)
+[PM2] Done.
+┌────┬────────┬─────────────┬─────────┬─────────┬──────────┬────────┬──────┬───────────┬──────────┬──────────┬──────────┬──────────┐
+│ id │ name   │ namespace   │ version │ mode    │ pid      │ uptime │ ↺    │ status    │ cpu      │ mem      │ user     │ watching │
+├────┼────────┼─────────────┼─────────┼─────────┼──────────┼────────┼──────┼───────────┼──────────┼──────────┼──────────┼──────────┤
+│ 0  │ api    │ default     │ N/A     │ fork    │ 162418   │ 0s     │ 0    │ online    │ 0%       │ 4.9mb    │ root     │ disabled │
+└────┴────────┴─────────────┴─────────┴─────────┴──────────┴────────┴──────┴───────────┴──────────┴──────────┴──────────┴──────────┘
+[PM2] Starting /usr/bin/bash in fork_mode (1 instance)
+[PM2] Done.
+┌────┬─────────────┬─────────────┬─────────┬─────────┬──────────┬────────┬──────┬───────────┬──────────┬──────────┬──────────┬──────────┐
+│ id │ name        │ namespace   │ version │ mode    │ pid      │ uptime │ ↺    │ status    │ cpu      │ mem      │ user     │ watching │
+├────┼─────────────┼─────────────┼─────────┼─────────┼──────────┼────────┼──────┼───────────┼──────────┼──────────┼──────────┼──────────┤
+│ 0  │ api         │ default     │ N/A     │ fork    │ 162418   │ 0s     │ 0    │ online    │ 0%       │ 35.4mb   │ root     │ disabled │
+│ 1  │ frontend    │ default     │ N/A     │ fork    │ 162427   │ 0s     │ 0    │ online    │ 0%       │ 3.4mb    │ root     │ disabled │
+└────┴─────────────┴─────────────┴─────────┴─────────┴──────────┴────────┴──────┴───────────┴──────────┴──────────┴──────────┴──────────┘
+[PM2] Saving current process list...
+[PM2] Successfully saved in /root/.pm2/dump.pm2
+➡️ Открытие портов в файрволе...
+bash: line 1: $: command not found
+Skipping adding existing rule
+Skipping adding existing rule (v6)
+Skipping adding existing rule
+Skipping adding existing rule (v6)
+Skipping adding existing rule
+Skipping adding existing rule (v6)
+Command may disrupt existing ssh connections. Proceed with operation (y|n)? Firewall is active and enabled on system startup
+✅ Сервер успешно настроен! Приложение теперь работает.
+=================================================
+🎉 Готово! Проект загружен и работает на сервере.
+🌐 API (Бэкенд): http://185.214.74.207:8000
+🌐 Сайт (Фронтенд): http://185.214.74.207:3000
+=================================================

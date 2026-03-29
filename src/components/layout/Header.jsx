@@ -6,6 +6,8 @@ import { Scissors, Github, Menu, X } from "lucide-react";
 
 const NAV_ITEMS = [
   { path: "/", label: "Upload" },
+  { path: "/watermark", label: "Watermark" },
+  { path: "/subtitles", label: "Subtitles" },
   { path: "/settings", label: "Settings" },
   { path: "/results", label: "Results" },
   { path: "/history", label: "History" },
@@ -64,7 +66,7 @@ export default function Header() {
       {/* Mobile menu overlay */}
       {mobileOpen && (
         <div className="fixed inset-0 z-40 sm:hidden animate-fade-in">
-          <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={() => setMobileOpen(false)} />
+          <div className="absolute inset-0 bg-black/85" onClick={() => setMobileOpen(false)} />
           <nav className="absolute top-[64px] left-0 right-0 glass border-t border-white/[0.05] p-4 flex flex-col gap-1">
             {NAV_ITEMS.map((item) => (
               <Link

@@ -60,8 +60,8 @@ EOF
 echo "[2/4] Копирование файлов проекта на сервер..."
 # Копируем всё что нужно (без зависимостей)
 /usr/bin/expect -c "
-set timeout 120
-spawn rsync -av --exclude 'node_modules' --exclude '.next' --exclude 'backend/venv' --exclude '.git' --exclude 'backend/inputs' --exclude 'backend/outputs' ./ $SERVER:/root/narezka/
+set timeout 300
+spawn rsync -av -e {ssh -o StrictHostKeyChecking=no} --exclude node_modules --exclude .next --exclude backend/venv --exclude .git --exclude backend/inputs --exclude backend/outputs ./ $SERVER:/root/narezka/
 expect {
     \"*?assword:*\" {
         send \"$PASS\r\"

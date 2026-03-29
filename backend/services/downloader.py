@@ -1,165 +1,142 @@
 """
-services/downloader.py — Умный загрузчик:
-  • YouTube → pytubefix (HD до 1080p, без ботозащиты)
-  • HLS (.m3u8), прямые MP4 и другие сайты → ffmpeg
+services/downloader.py — Извлекает прямые URL потоков БЕЗ скачивания на диск.
+
+Возвращает (video_url, audio_url | None, title) — затем FFmpeg
+читает с этих URL напрямую и нарезает на клипы, минуя inputs/.
 """
 
-import subprocess
-import shutil
+import asyncio
 from pathlib import Path
 
+import yt_dlp
 from fastapi import HTTPException
-from pytubefix import YouTube
-from pytubefix.cli import on_progress
 
 from services.task_manager import update_task_progress
 
-# Полный путь к ffmpeg (на macOS через Homebrew не попадает в PATH подпроцессов)
-FFMPEG_CMD = shutil.which("ffmpeg") or "/opt/homebrew/bin/ffmpeg"
 
-
-# ─── Helpers ────────────────────────────────────────────────────────────────
-
-def _is_youtube_url(url: str) -> bool:
-    return any(d in url for d in ("youtube.com/", "youtu.be/", "youtube-nocookie.com/"))
-
-
-def _is_direct_stream(url: str) -> bool:
-    """HLS манифесты, mp4/webm прямые ссылки."""
+def _is_direct_url(url: str) -> bool:
+    """Прямые MP4/WebM/HLS ссылки — отдаём как есть."""
     low = url.lower().split("?")[0]
     return any(low.endswith(ext) for ext in (".m3u8", ".mp4", ".webm", ".avi", ".mkv", ".ts", ".flv"))
 
 
-def _make_on_progress(task_id: str | None):
-    """Callbacks прогресса для pytubefix."""
-    def _callback(stream, chunk, bytes_remaining):
-        if task_id and stream.filesize:
-            pct = int(100 * (1 - bytes_remaining / stream.filesize))
-            update_task_progress(task_id, "downloading", pct)
-    return _callback if task_id else on_progress
+async def get_video_preview(url: str) -> dict:
+    """
+    Возвращает метаданные видео без скачивания: title, duration, thumbnail, uploader.
+    Используется для предпросмотра перед нарезкой.
+    """
+    return await asyncio.to_thread(_get_video_preview_sync, url)
 
 
-# ─── Public API ─────────────────────────────────────────────────────────────
+def _get_video_preview_sync(url: str) -> dict:
+    if _is_direct_url(url):
+        name = url.split("?")[0].rstrip("/").split("/")[-1] or "video.mp4"
+        return {"title": name, "duration": None, "thumbnail": None, "uploader": None}
 
-async def download_video(url: str, output_dir: Path, unique_prefix: str, task_id: str = None) -> Path:
-    import asyncio
-    return await asyncio.to_thread(_download_sync, url, output_dir, unique_prefix, task_id)
-
-
-# ─── Private ────────────────────────────────────────────────────────────────
-
-def _download_sync(url: str, output_dir: Path, unique_prefix: str, task_id: str | None) -> Path:
-    if _is_youtube_url(url):
-        return _download_youtube(url, output_dir, unique_prefix, task_id)
-    else:
-        # HLS / прямые ссылки → ffmpeg
-        return _download_ffmpeg(url, output_dir, unique_prefix, task_id)
-
-
-def _download_youtube(url: str, output_dir: Path, unique_prefix: str, task_id: str | None) -> Path:
+    ydl_opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "noplaylist": True,
+        "skip_download": True,
+        "socket_timeout": 20,  # 20 сек timeout на preview
+        "http_headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        },
+    }
     try:
-        yt = YouTube(
-            url,
-            on_progress_callback=_make_on_progress(task_id),
-            use_oauth=False,
-            allow_oauth_cache=True,
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+        return {
+            "title": info.get("title") or "Без названия",
+            "duration": info.get("duration"),
+            "thumbnail": info.get("thumbnail"),
+            "uploader": info.get("uploader") or info.get("channel"),
+        }
+    except asyncio.TimeoutError:
+        raise HTTPException(
+            status_code=408,
+            detail={"message": "Timeout при получении информации о видео. YouTube отвечает слишком долго."},
         )
-
-        safe_title = "".join(c for c in yt.title if c.isalnum() or c in " _-")[:60].strip()
-        filename = f"{unique_prefix}_{safe_title}.mp4"
-        final_output_path = output_dir / filename
-
-        def res_to_int(res_str: str) -> int:
-            return int(res_str.replace("p", "")) if res_str else 0
-
-        # Ищем HD поток (adaptive / DASH) до 1080p
-        video_streams = yt.streams.filter(adaptive=True, type="video", file_extension="mp4")
-        valid_vid = [s for s in video_streams if res_to_int(s.resolution) <= 1080]
-        video_stream = sorted(valid_vid, key=lambda s: res_to_int(s.resolution))[-1] if valid_vid else None
-        audio_stream = yt.streams.filter(adaptive=True, type="audio").order_by("abr").last()
-
-        if video_stream and audio_stream:
-            # Скачиваем HD видео + аудио раздельно, потом сливаем ffmpeg
-            vid_path = video_stream.download(output_path=str(output_dir), filename=f"v_{filename}", skip_existing=False)
-            aud_path = audio_stream.download(output_path=str(output_dir), filename=f"a_{filename}", skip_existing=False)
-
-            subprocess.run([
-                FFMPEG_CMD, "-y",
-                "-i", vid_path, "-i", aud_path,
-                "-c:v", "copy", "-c:a", "aac",
-                str(final_output_path)
-            ], capture_output=True, check=True)
-
-            Path(vid_path).unlink(missing_ok=True)
-            Path(aud_path).unlink(missing_ok=True)
-            result = final_output_path
-        else:
-            # Fallback на progressive поток
-            stream = yt.streams.get_highest_resolution()
-            if not stream:
-                raise HTTPException(status_code=400, detail={"message": "Нет доступных потоков.", "url": url})
-            output_path = stream.download(output_path=str(output_dir), filename=filename, skip_existing=False)
-            result = Path(output_path)
-
-        if not result.exists():
-            raise HTTPException(status_code=500, detail="YouTube: файл скачан, но не найден на диске.")
-        return result
-
-    except HTTPException:
-        raise
     except Exception as exc:
-        raise HTTPException(status_code=400, detail={"message": f"Ошибка YouTube: {str(exc)[:300]}", "url": url}) from exc
+        raise HTTPException(
+            status_code=400,
+            detail={"message": f"Не удалось получить информацию о видео: {str(exc)[:300]}"},
+        ) from exc
 
 
-def _download_ffmpeg(url: str, output_dir: Path, unique_prefix: str, task_id: str | None) -> Path:
+async def get_stream_info(url: str, task_id: str | None = None) -> tuple[str, str | None, str]:
     """
-    Скачивает HLS (.m3u8), прямые MP4/WebM и другие потоки через ffmpeg.
-    Работает с Кинопоиском, cinemap, KinoGo и другими сайтами.
+    Возвращает (video_url, audio_url | None, title).
+    Не скачивает файл — только извлекает прямые ссылки на поток.
     """
-    filename = f"{unique_prefix}_video.mp4"
-    output_path = output_dir / filename
+    return await asyncio.to_thread(_get_stream_info_sync, url, task_id)
 
+
+def _get_stream_info_sync(url: str, task_id: str | None) -> tuple[str, str | None, str]:
     if task_id:
-        update_task_progress(task_id, "downloading", 10)
+        update_task_progress(task_id, "downloading", 5)
 
-    cmd = [
-        FFMPEG_CMD, "-y",
-        "-i", url,
-        "-c", "copy",           # Без перекодировки — максимальная скорость
-        "-bsf:a", "aac_adtstoasc",  # Фикс для HLS аудио
-        "-movflags", "+faststart",
-        str(output_path),
-    ]
+    # Прямые ссылки — возвращаем как есть, без запросов
+    if _is_direct_url(url):
+        filename = url.split("?")[0].rstrip("/").split("/")[-1] or "video.mp4"
+        if task_id:
+            update_task_progress(task_id, "downloading", 30)
+        return url, None, filename
+
+    # YouTube, TikTok, VK и остальные — через yt-dlp (только извлечение URL)
+    ydl_opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "noplaylist": True,
+        "socket_timeout": 30,  # ← TIMEOUT 30 сек на каждый запрос
+        "http_headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        },
+        # Упрощённый формат — быстрее выбирает поток (не зависает)
+        "format": "best[height<=1080]/best",
+    }
 
     try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=7200,  # 2 часа — для длинных фильмов
-        )
+        if task_id:
+            update_task_progress(task_id, "downloading", 15)
+
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
 
         if task_id:
-            update_task_progress(task_id, "downloading", 90)
+            update_task_progress(task_id, "downloading", 40)
 
-        if result.returncode != 0:
-            err = result.stderr[-1000:] if result.stderr else "Unknown error"
+        raw_title = info.get("title") or "video"
+        title = "".join(c for c in raw_title if c.isalnum() or c in " _-").strip()[:60] or "video"
+
+        # Проверяем есть ли DASH формат (отдельные видео + аудио)
+        requested = info.get("requested_formats")
+        if requested and len(requested) >= 2:
+            # DASH: отдельные потоки видео и аудио (YouTube HD и др.)
+            vid_url = requested[0].get("url")
+            aud_url = requested[1].get("url")
+            if vid_url and aud_url:
+                return vid_url, aud_url, title
+
+        # Progressive или единый поток
+        stream_url = info.get("url")
+        if not stream_url:
             raise HTTPException(
                 status_code=400,
-                detail={
-                    "message": f"ffmpeg не смог скачать поток: {err}",
-                    "url": url,
-                },
+                detail={"message": "yt-dlp не вернул URL потока.", "url": url},
             )
+        return stream_url, None, title
 
-        if not output_path.exists() or output_path.stat().st_size == 0:
-            raise HTTPException(status_code=500, detail="ffmpeg завершился, но файл пуст или не найден.")
-
-        return output_path
-
-    except subprocess.TimeoutExpired as exc:
-        raise HTTPException(status_code=500, detail="Превышено время скачивания (2 часа).") from exc
     except HTTPException:
         raise
+    except asyncio.TimeoutError:
+        raise HTTPException(
+            status_code=408,
+            detail={"message": "Timeout: YouTube слишком долго отвечает. Попробуй позже.", "url": url},
+        )
     except Exception as exc:
-        raise HTTPException(status_code=400, detail={"message": f"Ошибка скачивания: {str(exc)[:300]}", "url": url}) from exc
+        err_msg = str(exc)[:400]
+        raise HTTPException(
+            status_code=400,
+            detail={"message": f"Ошибка извлечения URL: {err_msg}", "url": url},
+        ) from exc

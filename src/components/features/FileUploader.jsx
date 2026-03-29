@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { UploadCloud, FileVideo, X, Check, AlertCircle } from "lucide-react";
 import Button from "@/components/ui/Button";
 import DurationPicker from "@/components/features/DurationPicker";
 import { API_URL } from "@/lib/config";
 
-export default function FileUploader() {
+export default function FileUploader({ initialFile = null, onFileSet }) {
   const router = useRouter();
   const inputRef = useRef(null);
 
@@ -29,6 +29,14 @@ export default function FileUploader() {
     if (err) { setError(err); setFile(null); }
     else { setError(""); setFile(f); }
   }, []);
+
+  // Когда родитель передал файл через глобальный D&D
+  useEffect(() => {
+    if (initialFile) {
+      handleFile(initialFile);
+      onFileSet?.();
+    }
+  }, [initialFile, handleFile, onFileSet]);
 
   const onDrop = useCallback((e) => {
     e.preventDefault();

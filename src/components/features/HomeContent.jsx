@@ -1,16 +1,23 @@
 "use client";
 
 import { API_URL } from '@/lib/config';
+import { showToast } from '@/lib/useToast';
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { Wand2 } from "lucide-react";
+import { useState, useCallback, useEffect, useRef } from "react";
+import dynamic from "next/dynamic";
+import { Wand2, Tag, FileVideo } from "lucide-react";
 import Button from "@/components/ui/Button";
+import Card from "@/components/ui/Card";
 import TabSwitcher from "@/components/ui/TabSwitcher";
 import HeroBadge from "@/components/ui/HeroBadge";
 import UrlInput from "@/components/features/UrlInput";
-import FileUploader from "@/components/features/FileUploader";
 import DurationPicker from "@/components/features/DurationPicker";
+import RangePicker from "@/components/features/RangePicker";
+import VideoPreview from "@/components/features/VideoPreview";
+import TaskQueue from "@/components/features/TaskQueue";
+
+// FileUploader грузим лениво — нужен только когда переключились на вкладку "Загрузить файл"
+const FileUploader = dynamic(() => import("@/components/features/FileUploader"), { ssr: false });
 
 const TAB_URL = "url";
 const TAB_FILE = "file";
@@ -30,43 +37,93 @@ function isValidUrl(str) {
 }
 
 export default function HomeContent() {
-  const router = useRouter();
   const [tab, setTab] = useState(TAB_URL);
   const [url, setUrl] = useState("");
   const [urlError, setUrlError] = useState("");
-  const [processing, setProcessing] = useState(false);
+  const [submitting, setSubmitting] = useState(false); // только время отправки запроса
   const [segmentDuration, setSegmentDuration] = useState(60);
+  const [startTime, setStartTime] = useState(null);
+  const [endTime, setEndTime] = useState(null);
+  const [clipPrefix, setClipPrefix] = useState("");
 
-  const [progressInfo, setProgressInfo] = useState({ status: "", percent: 0 });
+  // Глобальный Drag & Drop — перетаскивание файла в любое место страницы
+  const [globalDragOver, setGlobalDragOver] = useState(false);
+  const [droppedFile, setDroppedFile] = useState(null);
+  const dragCounterRef = useRef(0);
 
-  const startPolling = (taskId) => {
+  useEffect(() => {
+    const onDragEnter = (e) => {
+      if (e.dataTransfer?.types?.includes("Files")) {
+        dragCounterRef.current++;
+        setGlobalDragOver(true);
+      }
+    };
+    const onDragLeave = () => {
+      dragCounterRef.current--;
+      if (dragCounterRef.current <= 0) {
+        dragCounterRef.current = 0;
+        setGlobalDragOver(false);
+      }
+    };
+    const onDragOver = (e) => e.preventDefault();
+    const onDrop = (e) => {
+      e.preventDefault();
+      dragCounterRef.current = 0;
+      setGlobalDragOver(false);
+      const file = e.dataTransfer.files?.[0];
+      if (file?.type.startsWith("video/")) {
+        setTab(TAB_FILE);
+        setDroppedFile(file);
+      }
+    };
+
+    window.addEventListener("dragenter", onDragEnter);
+    window.addEventListener("dragleave", onDragLeave);
+    window.addEventListener("dragover", onDragOver);
+    window.addEventListener("drop", onDrop);
+    return () => {
+      window.removeEventListener("dragenter", onDragEnter);
+      window.removeEventListener("dragleave", onDragLeave);
+      window.removeEventListener("dragover", onDragOver);
+      window.removeEventListener("drop", onDrop);
+    };
+  }, []);
+
+  // Очередь задач: [{taskId, url, status, progress, result, error}]
+  const [queue, setQueue] = useState([]);
+
+  const updateTask = useCallback((taskId, updates) => {
+    setQueue(prev => prev.map(t => t.taskId === taskId ? { ...t, ...updates } : t));
+  }, []);
+
+  const removeFromQueue = useCallback((taskId) => {
+    setQueue(prev => prev.filter(t => t.taskId !== taskId));
+  }, []);
+
+  const startPolling = useCallback((taskId) => {
     const interval = setInterval(async () => {
       try {
         const res = await fetch(`${API_URL}/task/${taskId}`);
-        if (!res.ok) throw new Error(`Ошибка получения статуса`);
+        if (!res.ok) throw new Error();
         const data = await res.json();
 
         if (data.status === "error") {
           clearInterval(interval);
-          setUrlError(data.error || "Ошибка при обработке.");
-          setProcessing(false);
-          setProgressInfo({ status: "", percent: 0 });
+          updateTask(taskId, { status: "error", error: data.error || "Ошибка при обработке." });
+          showToast("Ошибка", data.error || "Ошибка при обработке видео", { type: "error", duration: 5000 });
         } else if (data.status === "done") {
           clearInterval(interval);
-          sessionStorage.setItem("cutResult", JSON.stringify(data.result));
-          router.push("/results");
+          updateTask(taskId, { status: "done", progress: 100, result: data.result });
+          showToast("✨ Готово!", "Клипы успешно нарезаны. Скачивай или смотри в истории.", { type: "success", duration: 6000 });
         } else {
-          // Status update
-          setProgressInfo({ status: data.status, percent: data.progress || 0 });
+          updateTask(taskId, { status: data.status, progress: data.progress || 0 });
         }
-      } catch (err) {
+      } catch {
         clearInterval(interval);
-        setUrlError("Потеряно соединение с сервером.");
-        setProcessing(false);
-        setProgressInfo({ status: "", percent: 0 });
+        updateTask(taskId, { status: "error", error: "Потеряно соединение с сервером." });
       }
     }, 1000);
-  };
+  }, [updateTask]);
 
   const handleProcessUrl = async () => {
     if (!isValidUrl(url)) {
@@ -74,14 +131,19 @@ export default function HomeContent() {
       return;
     }
     setUrlError("");
-    setProcessing(true);
-    setProgressInfo({ status: "starting", percent: 0 });
+    setSubmitting(true);
 
     try {
       const response = await fetch(`${API_URL}/process-url/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url, segment_duration: segmentDuration }),
+        body: JSON.stringify({
+          url,
+          segment_duration: segmentDuration,
+          start_time: startTime,
+          end_time: endTime,
+          clip_prefix: clipPrefix.trim() || null,
+        }),
       });
 
       if (!response.ok) {
@@ -91,32 +153,45 @@ export default function HomeContent() {
 
       const data = await response.json();
       if (data.task_id) {
+        // Добавляем в очередь и сразу очищаем поле URL
+        setQueue(prev => [...prev, {
+          taskId: data.task_id,
+          url,
+          status: "starting",
+          progress: 0,
+          result: null,
+          error: null,
+        }]);
+        setUrl("");
         startPolling(data.task_id);
-      } else {
-        // Fallback if backend isn't Async yet
-        sessionStorage.setItem("cutResult", JSON.stringify(data));
-        router.push("/settings");
       }
     } catch (err) {
       setUrlError(err.message || "Ошибка при запросе. Проверьте ссылку.");
-      setProcessing(false);
-      setProgressInfo({ status: "", percent: 0 });
+    } finally {
+      setSubmitting(false);
     }
-  };
-
-  const getProcessingText = () => {
-    if (progressInfo.status === "downloading") return `Скачивание... ${progressInfo.percent}%`;
-    if (progressInfo.status === "cutting") return "ИИ нарезает видео... Это может занять время";
-    if (progressInfo.status === "starting") return "Инициализация...";
-    return "ИИ анализирует видео...";
   };
 
   return (
     <div className="relative flex-col items-center justify-center px-4 py-16 sm:py-24 md:py-32 min-h-[calc(100vh-80px)] overflow-hidden flex flex-1 w-full flex-grow">
 
-      {/* Ambient Orbs */}
-      <div className="absolute top-[-10%] left-1/2 -translate-x-1/2 w-[400px] sm:w-[700px] h-[400px] sm:h-[700px] bg-violet-600/15 blur-[120px] sm:blur-[180px] rounded-full pointer-events-none animate-float" />
-      <div className="absolute bottom-[-20%] right-[-10%] w-[300px] sm:w-[500px] h-[300px] sm:h-[500px] bg-fuchsia-600/10 blur-[100px] sm:blur-[150px] rounded-full pointer-events-none" />
+      {/* Глобальный drag overlay */}
+      {globalDragOver && (
+        <div className="fixed inset-0 z-999 pointer-events-none flex items-center justify-center">
+          <div className="absolute inset-0 bg-violet-950/60 backdrop-blur-sm" />
+          <div className="relative flex flex-col items-center gap-4 px-10 py-8 rounded-3xl border-2 border-dashed border-violet-400/60 bg-violet-500/10">
+            <div className="w-16 h-16 rounded-2xl bg-violet-500/20 flex items-center justify-center text-violet-300">
+              <FileVideo size={32} />
+            </div>
+            <p className="text-xl font-bold text-violet-200">Бросай видео сюда!</p>
+            <p className="text-sm text-violet-400">MP4, MOV до 2 GB</p>
+          </div>
+        </div>
+      )}
+
+      {/* Ambient Orbs — только на десктопе, на мобиле убраны (тяжёлый filter:blur) */}
+      <div className="hidden sm:block absolute top-[-10%] left-1/2 -translate-x-1/2 w-[700px] h-[700px] bg-violet-600/15 blur-[180px] rounded-full pointer-events-none animate-float" />
+      <div className="hidden sm:block absolute bottom-[-20%] right-[-10%] w-[500px] h-[500px] bg-fuchsia-600/10 blur-[150px] rounded-full pointer-events-none" />
       <div className="hidden sm:block absolute top-[30%] left-[-10%] w-[400px] h-[400px] bg-blue-600/8 blur-[120px] rounded-full pointer-events-none" />
 
       {/* Hero */}
@@ -125,7 +200,7 @@ export default function HomeContent() {
 
         <h1 className="text-3xl sm:text-5xl md:text-7xl font-black tracking-tight leading-[1.1] mb-4 sm:mb-6 text-zinc-100">
           Нарежь видео на{" "}
-          <span className="gradient-text text-glow">вирусные Shorts</span>
+          <span className="gradient-text sm:text-glow">вирусные Shorts</span>
         </h1>
 
         <p className="text-base sm:text-lg md:text-xl text-zinc-400 leading-relaxed font-normal max-w-xl mx-auto">
@@ -153,31 +228,53 @@ export default function HomeContent() {
                   setError={setUrlError}
                   onSubmit={handleProcessUrl}
                 />
-                
+
+                <VideoPreview url={url} />
+
+                <RangePicker
+                  startTime={startTime}
+                  endTime={endTime}
+                  onChange={(s, e) => { setStartTime(s); setEndTime(e); }}
+                />
+
+                <Card padding="p-6">
+                  <h2 className="text-sm font-semibold text-zinc-200 uppercase tracking-wider mb-2 flex items-center gap-2">
+                    <Tag size={16} className="text-violet-400" />
+                    Название клипов
+                  </h2>
+                  <p className="text-xs text-zinc-500 mb-4">
+                    Префикс для имён файлов. Клипы будут:{" "}
+                    <span className="text-zinc-400">{clipPrefix.trim() || "clip"}_001.mp4</span>
+                  </p>
+                  <input
+                    type="text"
+                    maxLength={50}
+                    placeholder="например: Лекция_1, Подкаст_2024..."
+                    value={clipPrefix}
+                    onChange={(e) => setClipPrefix(e.target.value)}
+                    className="w-full px-3 py-2.5 glass-input rounded-xl text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none"
+                  />
+                </Card>
+
                 <DurationPicker value={segmentDuration} onChange={setSegmentDuration} />
+
+                {/* Очередь задач */}
+                <TaskQueue queue={queue} onRemove={removeFromQueue} />
 
                 <Button
                   variant="primary"
                   size="lg"
-                  loading={processing}
+                  loading={submitting}
                   icon={Wand2}
                   onClick={handleProcessUrl}
-                  className="w-full h-14 text-base relative overflow-hidden"
+                  className="w-full h-14 text-base"
                 >
-                  <span className="relative z-10">
-                    {processing ? getProcessingText() : "Сгенерировать клипы"}
-                  </span>
-                  {processing && progressInfo.status === "downloading" && (
-                    <div
-                      className="absolute left-0 bottom-0 top-0 bg-white/10 transition-all duration-300 pointer-events-none"
-                      style={{ width: `${progressInfo.percent}%` }}
-                    />
-                  )}
+                  {submitting ? "Добавляем в очередь..." : "Сгенерировать клипы"}
                 </Button>
               </div>
             ) : (
               <div className="animate-fade-in">
-                <FileUploader />
+                <FileUploader initialFile={droppedFile} onFileSet={() => setDroppedFile(null)} />
               </div>
             )}
           </div>

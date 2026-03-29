@@ -1,6 +1,7 @@
 import { Inter } from "next/font/google";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
+import { ToastProvider } from "@/components/layout/ToastProvider";
 import "./globals.css";
 
 const inter = Inter({
@@ -28,7 +29,7 @@ export default function RootLayout({ children }) {
       <body className="flex flex-col min-h-screen noise relative">
         <Header />
         <main className="flex-1 pt-[64px] sm:pt-[72px] flex flex-col relative z-10">
-          {children}
+          <ToastProvider>{children}</ToastProvider>
         </main>
         <Footer />
       </body>

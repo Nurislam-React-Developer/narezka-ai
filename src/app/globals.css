@@ -26,6 +26,14 @@ body {
   overflow-x: hidden;
 }
 
+/* На мобиле — простой фон без градиентов */
+@media (max-width: 768px) {
+  body {
+    background-image: none;
+    background-color: #07071a;
+  }
+}
+
 ::selection {
   background: rgba(124, 58, 237, 0.3);
   color: #fff;
@@ -182,4 +190,82 @@ body {
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
+}
+
+/* ===== MOBILE PERFORMANCE ===== */
+/* background-attachment: fixed отключает GPU-ускорение прокрутки на Android */
+@media (max-width: 768px) {
+  body {
+    background-attachment: scroll;
+    /* Упрощаем фон — убираем тяжёлые radial-gradient на мобиле */
+    background-image: radial-gradient(ellipse 100% 50% at 50% -10%, rgba(124, 58, 237, 0.1), transparent);
+  }
+
+  /* Полностью убираем backdrop-filter на мобиле — главный убийца FPS на Android */
+  .glass,
+  .glass-card,
+  .glass-subtle,
+  .glass-input {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  /* Компенсируем: делаем фон чуть более непрозрачным */
+  .glass {
+    background: rgba(15, 15, 30, 0.85);
+  }
+
+  .glass-card {
+    background: rgba(15, 15, 30, 0.8);
+    /* Убираем will-change — освобождаем GPU-память */
+    will-change: auto;
+    /* Убираем hover-transform — нет hover на тач-устройствах */
+    transform: none !important;
+    transition: none;
+  }
+
+  .glass-subtle {
+    background: rgba(10, 10, 25, 0.75);
+  }
+
+  .glass-input {
+    background: rgba(15, 15, 30, 0.7);
+  }
+
+  /* Отключаем noise-текстуру — mix-blend-mode тяжёл на мобиле */
+  .noise::before {
+    display: none;
+  }
+
+  /* Ускоряем анимации появления — не тормозим прокрутку */
+  .animate-fade-in-up {
+    animation-duration: 0.25s;
+  }
+
+  .animate-fade-in {
+    animation-duration: 0.2s;
+  }
+
+  /* Отключаем float — постоянный reflow */
+  .animate-float {
+    animation: none;
+  }
+}
+
+/* GPU-слой для карточек с трансформом при hover — только на десктопе */
+@media (min-width: 769px) {
+  .glass-card {
+    will-change: transform;
+  }
+}
+
+/* Отключаем анимации для пользователей, предпочитающих меньше движения */
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in-up,
+  .animate-fade-in,
+  .animate-shimmer,
+  .animate-float {
+    animation: none;
+    opacity: 1;
+  }
 }

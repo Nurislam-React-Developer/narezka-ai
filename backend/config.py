@@ -21,6 +21,12 @@ if _ENV_OUTPUTS:
 else:
     OUTPUTS_DIR = BASE_DIR / "outputs" / "clips"
 
+# Директория для субтитров (.srt файлы)
+SUBTITLES_DIR = BASE_DIR / "outputs" / "subtitles"
+
 DEFAULT_SEGMENT_DURATION = 60  # Длина одного сегмента в секундах (по умолчанию)
 
 ALLOWED_VIDEO_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv", ".webm", ".flv", ".ts"}
+
+# Модель Whisper для транскрипции ("tiny", "base", "small", "medium", "large")
+WHISPER_MODEL = os.getenv("WHISPER_MODEL", "base")

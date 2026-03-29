@@ -22,6 +22,7 @@ export default function WatchContent() {
 
   const videoRef = useRef(null);
   const containerRef = useRef(null);
+  const rafRef = useRef(null);
   const [playing, setPlaying] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -31,6 +32,14 @@ export default function WatchContent() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showControls, setShowControls] = useState(true);
   const controlsTimer = useRef(null);
+
+  const handleTimeUpdate = useCallback(() => {
+    if (!videoRef.current || rafRef.current) return;
+    rafRef.current = requestAnimationFrame(() => {
+      if (videoRef.current) setCurrentTime(videoRef.current.currentTime);
+      rafRef.current = null;
+    });
+  }, []);
 
   const togglePlay = useCallback(() => {
     if (!videoRef.current) return;
@@ -200,7 +209,7 @@ export default function WatchContent() {
             ref={videoRef}
             src={src}
             className="w-full h-full object-contain bg-black"
-            onTimeUpdate={() => videoRef.current && setCurrentTime(videoRef.current.currentTime)}
+            onTimeUpdate={handleTimeUpdate}
             onLoadedMetadata={() => videoRef.current && setDuration(videoRef.current.duration)}
             onEnded={() => setPlaying(false)}
             onPlay={() => setPlaying(true)}
@@ -213,7 +222,7 @@ export default function WatchContent() {
           {/* Big centered play button */}
           {!playing && (
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              <div className="w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 flex items-center justify-center rounded-full bg-white/[0.1] backdrop-blur-xl border border-white/[0.1] text-white glow-accent">
+              <div className="w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 flex items-center justify-center rounded-full bg-white/[0.15] border border-white/[0.1] text-white glow-accent">
                 <Play fill="currentColor" size={28} className="ml-1 sm:w-9 sm:h-9" />
               </div>
             </div>

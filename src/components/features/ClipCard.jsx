@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Play, Pause, Download, Clock, Scissors, Volume2, VolumeX, Maximize2 } from "lucide-react";
+import { Play, Pause, Download, Clock, Scissors, Volume2, VolumeX, Maximize2, Pencil, Check, X } from "lucide-react";
 import Button from "@/components/ui/Button";
 
 function formatTime(sec) {
@@ -13,7 +13,7 @@ function formatTime(sec) {
 }
 
 export default function ClipCard({ clip }) {
-  const { title, timecode, duration, src, thumbnail, filename } = clip;
+  const { title, timecode, duration, durationSecs, src, thumbnail, filename } = clip;
   const router = useRouter();
   const videoRef = useRef(null);
   const progressRef = useRef(null);
@@ -21,10 +21,29 @@ export default function ClipCard({ clip }) {
   const [playing, setPlaying] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [muted, setMuted] = useState(false);
+  const [customName, setCustomName] = useState(filename?.replace(/\.mp4$/i, "") || "");
+  const [renaming, setRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState("");
+  const renameInputRef = useRef(null);
   const [currentTime, setCurrentTime] = useState(0);
-  const [totalDuration, setTotalDuration] = useState(duration || 0);
+  // Используем числовую длительность из пропса — не нужно грузить метаданные
+  const [totalDuration, setTotalDuration] = useState(durationSecs || 0);
 
-  // Оптимизация загрузки (Lazy Loading)
+  // RAF для троттлинга onTimeUpdate (не перерисовываем компонент чаще 1 раза за кадр)
+  const rafRef = useRef(null);
+  const handleTimeUpdate = useCallback(() => {
+    if (!videoRef.current || rafRef.current) return;
+    rafRef.current = requestAnimationFrame(() => {
+      if (videoRef.current) setCurrentTime(videoRef.current.currentTime);
+      rafRef.current = null;
+    });
+  }, []);
+
+  useEffect(() => {
+    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
+  }, []);
+
+  // Lazy Loading — src подключается только когда карточка в зоне видимости
   const containerRef = useRef(null);
   const [isVisible, setIsVisible] = useState(false);
 
@@ -36,11 +55,11 @@ export default function ClipCard({ clip }) {
           observer.disconnect();
         }
       },
-      { rootMargin: "600px" } // Загружаем метаданные видео немного заранее (за 600px до прокрутки)
+      { rootMargin: "200px" } // Уменьшили с 600px — не грузим всё заранее
     );
 
     if (containerRef.current) observer.observe(containerRef.current);
-    
+
     return () => observer.disconnect();
   }, []);
 
@@ -90,7 +109,7 @@ export default function ClipCard({ clip }) {
         const blob = await res.blob();
         
         const handle = await window.showSaveFilePicker({
-          suggestedName: filename || "clip.mp4",
+          suggestedName: downloadFilename,
           types: [{
             description: 'Видео',
             accept: { 'video/mp4': ['.mp4'] },
@@ -103,7 +122,7 @@ export default function ClipCard({ clip }) {
         // Fallback for Safari/Mobile
         const a = document.createElement("a");
         a.href = src;
-        a.download = filename || "clip.mp4";
+        a.download = downloadFilename;
         a.target = "_blank";
         document.body.appendChild(a);
         a.click();
@@ -118,6 +137,27 @@ export default function ClipCard({ clip }) {
     }
   };
 
+  const startRename = (e) => {
+    e.stopPropagation();
+    setRenameValue(customName);
+    setRenaming(true);
+    setTimeout(() => renameInputRef.current?.focus(), 0);
+  };
+
+  const confirmRename = (e) => {
+    e?.stopPropagation();
+    const trimmed = renameValue.trim();
+    if (trimmed) setCustomName(trimmed);
+    setRenaming(false);
+  };
+
+  const cancelRename = (e) => {
+    e?.stopPropagation();
+    setRenaming(false);
+  };
+
+  const downloadFilename = `${customName}.mp4`;
+
   const progress = totalDuration > 0 ? (currentTime / totalDuration) * 100 : 0;
 
   return (
@@ -130,14 +170,14 @@ export default function ClipCard({ clip }) {
       <div className="relative aspect-[9/16] bg-black/50">
         <video
           ref={videoRef}
-          src={src}
+          src={isVisible ? src : undefined}
           poster={thumbnail}
           className="absolute inset-0 w-full h-full object-cover"
           onEnded={() => setPlaying(false)}
-          onTimeUpdate={() => videoRef.current && setCurrentTime(videoRef.current.currentTime)}
+          onTimeUpdate={handleTimeUpdate}
           onLoadedMetadata={() => videoRef.current && setTotalDuration(videoRef.current.duration)}
           playsInline
-          preload={isVisible ? "metadata" : "none"}
+          preload="none"
         />
 
         <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-black/70 pointer-events-none" />
@@ -194,7 +234,40 @@ export default function ClipCard({ clip }) {
 
       {/* Content */}
       <div className="p-3 sm:p-4 flex flex-col gap-2 sm:gap-4 flex-1" onClick={(e) => e.stopPropagation()}>
-        <h3 className="text-xs sm:text-sm font-semibold text-zinc-100 leading-snug line-clamp-2">{title}</h3>
+        {/* Title с inline-rename */}
+        {renaming ? (
+          <div className="flex items-center gap-1.5 animate-fade-in">
+            <input
+              ref={renameInputRef}
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") confirmRename(e);
+                if (e.key === "Escape") cancelRename(e);
+              }}
+              onClick={(e) => e.stopPropagation()}
+              className="flex-1 min-w-0 px-2 py-1 rounded-lg bg-white/[0.06] border border-violet-500/40 text-xs text-zinc-100 focus:outline-none"
+              maxLength={80}
+            />
+            <button onClick={confirmRename} className="p-1 text-emerald-400 hover:text-emerald-300 transition-colors shrink-0">
+              <Check size={14} />
+            </button>
+            <button onClick={cancelRename} className="p-1 text-zinc-500 hover:text-zinc-300 transition-colors shrink-0">
+              <X size={14} />
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-start gap-1.5 group/title">
+            <h3 className="text-xs sm:text-sm font-semibold text-zinc-100 leading-snug line-clamp-2 flex-1">{customName}</h3>
+            <button
+              onClick={startRename}
+              className="shrink-0 p-0.5 text-zinc-600 hover:text-violet-400 transition-colors opacity-0 group-hover/title:opacity-100 mt-0.5"
+              title="Переименовать"
+            >
+              <Pencil size={12} />
+            </button>
+          </div>
+        )}
         <div className="mt-auto flex flex-col gap-2">
           {/* Watch button — visible, especially for mobile */}
           <Button
