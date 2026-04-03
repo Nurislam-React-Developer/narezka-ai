@@ -7,6 +7,7 @@ import { Scissors, Github, Menu, X } from "lucide-react";
 const NAV_ITEMS = [
   { path: "/", label: "Upload" },
   { path: "/watermark", label: "Watermark" },
+  { path: "/compress", label: "Compress" },
   { path: "/subtitles", label: "Subtitles" },
   { path: "/settings", label: "Settings" },
   { path: "/results", label: "Results" },

@@ -31,6 +31,7 @@ from routes.video import router as video_router
 from routes.health import router as health_router
 from routes.watermark import router as watermark_router
 from routes.subtitles import router as subtitles_router
+from routes.compress import router as compress_router
 
 # ---------------------------------------------------------------------------
 # Инициализация FastAPI
@@ -87,6 +88,7 @@ app.include_router(video_router)
 app.include_router(health_router)
 app.include_router(watermark_router)
 app.include_router(subtitles_router)
+app.include_router(compress_router)
 
 
 async def cleanup_old_files_task():
