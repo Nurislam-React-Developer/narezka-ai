@@ -1,59 +1,87 @@
-// Утилита для воспроизведения уведомлений
+// Утилита для воспроизведения уведомлений через Web Audio API
 
-// Синтезируем звук с помощью Web Audio API
+/**
+ * Приятный успех-звук: три восходящие ноты (До-Ми-Соль)
+ * Мягкий тон, напоминает iOS/macOS уведомления.
+ */
 export function playNotificationSound() {
   try {
-    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    const now = audioContext.currentTime;
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const master = ctx.createGain();
+    master.gain.setValueAtTime(0.18, ctx.currentTime);
+    master.connect(ctx.destination);
 
-    // Создаём мелодию: две нноты (как в уведомлениях телефона)
-    const oscillator1 = audioContext.createOscillator();
-    const oscillator2 = audioContext.createOscillator();
-    const gainNode = audioContext.createGain();
+    // До-Ми-Соль (C5, E5, G5) — мажорный аккорд по очереди
+    const notes = [
+      { freq: 523.25, start: 0,    dur: 0.18 }, // C5
+      { freq: 659.25, start: 0.13, dur: 0.18 }, // E5
+      { freq: 783.99, start: 0.26, dur: 0.28 }, // G5
+    ];
 
-    oscillator1.connect(gainNode);
-    oscillator2.connect(gainNode);
-    gainNode.connect(audioContext.destination);
+    notes.forEach(({ freq, start, dur }) => {
+      const osc  = ctx.createOscillator();
+      const gain = ctx.createGain();
 
-    // Первая нота: высокая (C6 ~ 1047 Hz)
-    oscillator1.frequency.setValueAtTime(1047, now);
-    oscillator1.frequency.setValueAtTime(1047, now + 0.1);
-    oscillator1.start(now);
-    oscillator1.stop(now + 0.1);
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(freq, ctx.currentTime + start);
 
-    // Вторая нота: очень высокая (G6 ~ 1568 Hz)
-    oscillator2.frequency.setValueAtTime(1568, now + 0.15);
-    oscillator2.frequency.setValueAtTime(1568, now + 0.25);
-    oscillator2.start(now + 0.15);
-    oscillator2.stop(now + 0.25);
+      // Мягкая атака + плавное затухание (без щелчков)
+      gain.gain.setValueAtTime(0, ctx.currentTime + start);
+      gain.gain.linearRampToValueAtTime(1, ctx.currentTime + start + 0.025);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + start + dur);
 
-    // Громкость: быстрое появление и затухание
-    gainNode.gain.setValueAtTime(0, now);
-    gainNode.gain.linearRampToValueAtTime(0.3, now + 0.02);
-    gainNode.gain.linearRampToValueAtTime(0, now + 0.25);
+      osc.connect(gain);
+      gain.connect(master);
+
+      osc.start(ctx.currentTime + start);
+      osc.stop(ctx.currentTime + start + dur + 0.01);
+    });
+
+    // Закрываем контекст после воспроизведения
+    setTimeout(() => ctx.close(), 800);
   } catch (err) {
-    console.warn('Audio API не доступен:', err);
+    console.warn("Audio API не доступен:", err);
   }
 }
 
-// Альтернативный вариант: простой короткий тон
-export function playSimpleBeep() {
+/**
+ * Звук ошибки: две нисходящие ноты
+ */
+export function playErrorSound() {
   try {
-    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    const now = audioContext.currentTime;
-    const oscillator = audioContext.createOscillator();
-    const gainNode = audioContext.createGain();
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const master = ctx.createGain();
+    master.gain.setValueAtTime(0.15, ctx.currentTime);
+    master.connect(ctx.destination);
 
-    oscillator.connect(gainNode);
-    gainNode.connect(audioContext.destination);
+    const notes = [
+      { freq: 440, start: 0,    dur: 0.15 }, // A4
+      { freq: 330, start: 0.18, dur: 0.25 }, // E4
+    ];
 
-    oscillator.frequency.setValueAtTime(800, now);
-    oscillator.start(now);
-    oscillator.stop(now + 0.1);
+    notes.forEach(({ freq, start, dur }) => {
+      const osc  = ctx.createOscillator();
+      const gain = ctx.createGain();
 
-    gainNode.gain.setValueAtTime(0.3, now);
-    gainNode.gain.linearRampToValueAtTime(0, now + 0.1);
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(freq, ctx.currentTime + start);
+
+      gain.gain.setValueAtTime(0, ctx.currentTime + start);
+      gain.gain.linearRampToValueAtTime(1, ctx.currentTime + start + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + start + dur);
+
+      osc.connect(gain);
+      gain.connect(master);
+
+      osc.start(ctx.currentTime + start);
+      osc.stop(ctx.currentTime + start + dur + 0.01);
+    });
+
+    setTimeout(() => ctx.close(), 700);
   } catch (err) {
-    console.warn('Audio API не доступен:', err);
+    console.warn("Audio API не доступен:", err);
   }
 }
+
+// Оставляем для обратной совместимости
+export const playSimpleBeep = playNotificationSound;

@@ -6,6 +6,7 @@ import { useNotifications } from '@/lib/useNotifications';
 import { showToast } from '@/lib/useToast';
 
 import { useState, useCallback, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { Wand2, Tag, FileVideo } from "lucide-react";
 import Button from "@/components/ui/Button";
@@ -39,6 +40,7 @@ function isValidUrl(str) {
 }
 
 export default function HomeContent() {
+  const router = useRouter();
   const [tab, setTab] = useState(TAB_URL);
   const [url, setUrl] = useState("");
   const [urlError, setUrlError] = useState("");
@@ -118,7 +120,8 @@ export default function HomeContent() {
         } else if (data.status === "done") {
           clearInterval(interval);
           updateTask(taskId, { status: "done", progress: 100, result: data.result });
-          showToast("✨ Готово!", "Клипы успешно нарезаны. Скачивай или смотри в истории.", { type: "success", duration: 6000 });
+          showToast("✨ Готово!", "Клипы успешно нарезаны. Переходим к результатам...", { type: "success", duration: 5000 });
+
           // Push-уведомление браузера (если пользователь на другой вкладке)
           const clipsCount = data.result?.clips?.length ?? data.result?.total_clips ?? "";
           notify("✨ Клипы готовы!", {
@@ -127,6 +130,12 @@ export default function HomeContent() {
               : "Нарезка завершена. Нажми чтобы открыть.",
             tag: `narezka-done-${taskId}`,
           });
+
+          // Авторедирект на /results через 1.5с (чтобы пользователь успел увидеть тост)
+          if (data.result) {
+            sessionStorage.setItem("cutResult", JSON.stringify(data.result));
+          }
+          setTimeout(() => router.push("/results"), 1500);
         } else {
           updateTask(taskId, { status: data.status, progress: data.progress || 0 });
         }
@@ -135,7 +144,7 @@ export default function HomeContent() {
         updateTask(taskId, { status: "error", error: "Потеряно соединение с сервером." });
       }
     }, 1000);
-  }, [updateTask, notify]);
+  }, [updateTask, notify, router]);
 
   const handleProcessUrl = async () => {
     if (!isValidUrl(url)) {
