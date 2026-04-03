@@ -1,11 +1,13 @@
 "use client";
 
 import { API_URL } from "@/lib/config";
+import { useSessionTags, makeSessionId } from "@/lib/useSessionTags";
 
 import { useState, useEffect, useCallback } from "react";
-import { Clock, Scissors, Play, ChevronDown, Loader2, Trash2 } from "lucide-react";
+import { Clock, Scissors, Play, ChevronDown, Loader2, Trash2, Tag } from "lucide-react";
 import HistoryClipCard from "@/components/features/HistoryClipCard";
 import DeleteHistoryModal from "@/components/features/DeleteHistoryModal";
+import TagBadge, { PRESET_TAGS } from "@/components/features/TagBadge";
 
 const CLIPS_PREVIEW = 4;
 const SESSIONS_PER_PAGE = 5;
@@ -18,6 +20,10 @@ export default function HistoryContent() {
   const [hasMore, setHasMore] = useState(false);
   const [expanded, setExpanded] = useState(new Set());
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+
+  // Теги и фильтрация
+  const { getTag, setTag } = useSessionTags();
+  const [activeFilter, setActiveFilter] = useState(null); // null = все
 
   const fetchPage = useCallback(async (pageNum, append = false) => {
     try {
@@ -66,6 +72,11 @@ export default function HistoryContent() {
     });
   };
 
+  // Фильтрация по тегу
+  const filteredSessions = activeFilter
+    ? sessions.filter((s) => getTag(makeSessionId(s)) === activeFilter)
+    : sessions;
+
   if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center min-h-[60vh]">
@@ -107,10 +118,48 @@ export default function HistoryContent() {
             <span className="hidden sm:inline">Удалить</span>
           </button>
         </div>
+
+        {/* Фильтр по тегам */}
+        <div className="mt-6 flex flex-wrap items-center gap-2">
+          <span className="text-xs text-zinc-600 flex items-center gap-1 mr-1">
+            <Tag size={11} /> Фильтр:
+          </span>
+          <button
+            onClick={() => setActiveFilter(null)}
+            className={`px-3 py-1 rounded-full text-xs font-semibold border transition-all ${
+              activeFilter === null
+                ? "border-violet-500/40 bg-violet-500/10 text-violet-300"
+                : "border-white/[0.06] text-zinc-500 hover:text-zinc-300 hover:border-white/[0.12]"
+            }`}
+          >
+            Все
+          </button>
+          {PRESET_TAGS.map((tag) => (
+            <button
+              key={tag.id}
+              onClick={() => setActiveFilter(activeFilter === tag.label ? null : tag.label)}
+              className={`px-3 py-1 rounded-full text-xs font-semibold border transition-all ${
+                activeFilter === tag.label
+                  ? tag.color
+                  : "border-white/[0.06] text-zinc-500 hover:text-zinc-300 hover:border-white/[0.12]"
+              }`}
+            >
+              {tag.label}
+            </button>
+          ))}
+        </div>
       </div>
 
+      {filteredSessions.length === 0 && (
+        <div className="flex items-center justify-center min-h-[30vh] text-zinc-500">
+          <p>Нет сессий с тегом «{activeFilter}»</p>
+        </div>
+      )}
+
       <div className="space-y-16">
-        {sessions.map((session, index) => {
+        {filteredSessions.map((session, index) => {
+          const sessionId = makeSessionId(session);
+          const currentTag = getTag(sessionId);
           const clips = session.clips || [];
           const isExpanded = expanded.has(index);
           const shownClips = isExpanded ? clips : clips.slice(0, CLIPS_PREVIEW);
@@ -120,10 +169,17 @@ export default function HistoryContent() {
             <div key={index}>
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
                 <div>
-                  <h2 className="text-lg font-bold text-zinc-200 truncate max-w-2xl">
-                    {session.original_filename || session.source_file || "Неизвестное видео"}
-                  </h2>
-                  <div className="flex items-center gap-4 mt-2 text-xs text-zinc-500">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <h2 className="text-lg font-bold text-zinc-200 truncate max-w-2xl">
+                      {session.original_filename || session.source_file || "Неизвестное видео"}
+                    </h2>
+                    {/* Тег сессии */}
+                    <TagBadge
+                      value={currentTag}
+                      onChange={(tag) => setTag(sessionId, tag)}
+                    />
+                  </div>
+                  <div className="flex items-center gap-4 mt-1 text-xs text-zinc-500">
                     <span className="flex items-center gap-1"><Scissors size={14} /> {session.total_clips} клипов</span>
                     <span className="flex items-center gap-1"><Play size={14} /> Сегменты по {session.segment_duration_seconds}с</span>
                   </div>
@@ -147,7 +203,7 @@ export default function HistoryContent() {
                     clip={{
                       id: clip.id,
                       title: `Клип #${clip.id} — ${clip.filename}`,
-                      duration: `${Math.floor(clip.duration / 60)}:${String(Math.floor(clip.duration % 60)).padStart(2, "0")}`,
+                      duration: `${Math.floor(clip.duration / 60)}:${String(Math.floor(clip.duration % 60)).padStart(2, "00")}`,
                       durationSecs: clip.duration,
                       src: `${API_URL}/outputs/${clip.path}`,
                       thumbnail: clip.thumbnail ? `${API_URL}/outputs/${clip.thumbnail}` : "",
@@ -190,6 +246,7 @@ export default function HistoryContent() {
           </button>
         </div>
       )}
+
       {showDeleteModal && (
         <DeleteHistoryModal
           sessions={sessions}

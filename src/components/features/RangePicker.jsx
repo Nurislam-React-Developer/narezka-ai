@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { Scissors } from "lucide-react";
 import Card from "@/components/ui/Card";
+import RangeSlider from "@/components/ui/RangeSlider";
 
 // "1:30" или "0:45" или "1:02:30" → секунды
 function parseTime(str) {
@@ -24,10 +25,17 @@ function formatTime(seconds) {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-export default function RangePicker({ startTime, endTime, onChange }) {
+export default function RangePicker({ startTime, endTime, onChange, videoDuration }) {
   const [enabled, setEnabled] = useState(false);
   const [startRaw, setStartRaw] = useState("");
   const [endRaw, setEndRaw] = useState("");
+
+  // Рабочие значения: если нет videoDuration — только текстовый ввод
+  const hasVideo = videoDuration != null && videoDuration > 0;
+
+  // Значения для слайдера (с defaults)
+  const sliderStart = startTime ?? 0;
+  const sliderEnd   = endTime ?? (videoDuration ?? 0);
 
   const handleToggle = () => {
     const next = !enabled;
@@ -36,18 +44,30 @@ export default function RangePicker({ startTime, endTime, onChange }) {
       setStartRaw("");
       setEndRaw("");
       onChange(null, null);
+    } else if (hasVideo) {
+      // При включении инициализируем диапазон как весь ролик
+      onChange(0, videoDuration);
+      setStartRaw(formatTime(0));
+      setEndRaw(formatTime(videoDuration));
     }
   };
 
+  // Изменение через текстовые поля
   const handleStartChange = (val) => {
     setStartRaw(val);
     onChange(parseTime(val), endTime);
   };
-
   const handleEndChange = (val) => {
     setEndRaw(val);
     onChange(startTime, parseTime(val));
   };
+
+  // Изменение через слайдер
+  const handleSliderChange = useCallback((start, end) => {
+    onChange(start, end);
+    setStartRaw(formatTime(start));
+    setEndRaw(formatTime(end));
+  }, [onChange]);
 
   const hasRange = startTime !== null || endTime !== null;
 
@@ -77,44 +97,68 @@ export default function RangePicker({ startTime, endTime, onChange }) {
 
       <p className="text-xs text-zinc-500 mb-4">
         {enabled
-          ? "Введите время начала и конца (мм:сс или чч:мм:сс)"
+          ? hasVideo
+            ? "Перетащи маркеры или введи время вручную"
+            : "Введите время начала и конца (мм:сс или чч:мм:сс)"
           : "Нарезать весь ролик целиком"}
       </p>
 
       {enabled && (
-        <div className="flex items-end gap-3 animate-fade-in">
-          <div className="flex-1">
-            <label className="text-xs text-zinc-500 mb-1.5 block">С</label>
-            <input
-              type="text"
-              placeholder="0:00"
-              value={startRaw}
-              onChange={(e) => handleStartChange(e.target.value)}
-              className="w-full px-3 py-2.5 glass-input rounded-xl text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none"
-            />
-          </div>
-          <div className="pb-3 text-zinc-600 text-lg select-none">—</div>
-          <div className="flex-1">
-            <label className="text-xs text-zinc-500 mb-1.5 block">По</label>
-            <input
-              type="text"
-              placeholder="10:00"
-              value={endRaw}
-              onChange={(e) => handleEndChange(e.target.value)}
-              className="w-full px-3 py-2.5 glass-input rounded-xl text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none"
-            />
-          </div>
-        </div>
-      )}
+        <div className="flex flex-col gap-5 animate-fade-in">
+          {/* Визуальный слайдер — только когда известна длина видео */}
+          {hasVideo && (
+            <div className="pt-4 pb-1 group">
+              <RangeSlider
+                min={0}
+                max={videoDuration}
+                startValue={sliderStart}
+                endValue={sliderEnd}
+                onChange={handleSliderChange}
+              />
+            </div>
+          )}
 
-      {enabled && hasRange && (
-        <div className="mt-4 px-4 py-2.5 rounded-xl glass-subtle text-center">
-          <span className="text-xs text-zinc-500">Диапазон: </span>
-          <span className="text-sm font-bold text-violet-400">
-            {startTime !== null ? formatTime(startTime) : "начало"}{" "}
-            —{" "}
-            {endTime !== null ? formatTime(endTime) : "конец"}
-          </span>
+          {/* Текстовые поля — всегда как дополнение */}
+          <div className="flex items-end gap-3">
+            <div className="flex-1">
+              <label className="text-xs text-zinc-500 mb-1.5 block">С</label>
+              <input
+                type="text"
+                placeholder="0:00"
+                value={startRaw}
+                onChange={(e) => handleStartChange(e.target.value)}
+                className="w-full px-3 py-2.5 glass-input rounded-xl text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none font-mono"
+              />
+            </div>
+            <div className="pb-3 text-zinc-600 text-lg select-none">—</div>
+            <div className="flex-1">
+              <label className="text-xs text-zinc-500 mb-1.5 block">По</label>
+              <input
+                type="text"
+                placeholder={hasVideo ? formatTime(videoDuration) : "10:00"}
+                value={endRaw}
+                onChange={(e) => handleEndChange(e.target.value)}
+                className="w-full px-3 py-2.5 glass-input rounded-xl text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none font-mono"
+              />
+            </div>
+          </div>
+
+          {/* Итоговый диапазон */}
+          {hasRange && (
+            <div className="px-4 py-2.5 rounded-xl glass-subtle text-center">
+              <span className="text-xs text-zinc-500">Диапазон: </span>
+              <span className="text-sm font-bold text-violet-400 font-mono">
+                {startTime !== null ? formatTime(startTime) : "начало"}
+                {" — "}
+                {endTime !== null ? formatTime(endTime) : "конец"}
+              </span>
+              {startTime !== null && endTime !== null && (
+                <span className="text-xs text-zinc-600 ml-2">
+                  ({formatTime(endTime - startTime)})
+                </span>
+              )}
+            </div>
+          )}
         </div>
       )}
     </Card>

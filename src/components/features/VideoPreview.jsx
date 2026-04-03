@@ -22,7 +22,7 @@ function formatDuration(seconds) {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-export default function VideoPreview({ url }) {
+export default function VideoPreview({ url, onDuration }) {
   const [state, setState] = useState("idle"); // idle | loading | done | error
   const [info, setInfo] = useState(null);
 
@@ -30,6 +30,7 @@ export default function VideoPreview({ url }) {
     if (!url || !isValidUrl(url)) {
       setState("idle");
       setInfo(null);
+      onDuration?.(null);
       return;
     }
 
@@ -47,13 +48,15 @@ export default function VideoPreview({ url }) {
         const data = await res.json();
         setInfo(data);
         setState("done");
+        // Пробрасываем длительность в родителя для RangePicker
+        if (data.duration) onDuration?.(data.duration);
       } catch {
         setState("error");
       }
     }, 800);
 
     return () => clearTimeout(timer);
-  }, [url]);
+  }, [url, onDuration]);
 
   if (state === "idle") return null;
 

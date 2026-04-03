@@ -1,6 +1,8 @@
 "use client";
 
 import { API_URL } from '@/lib/config';
+import { useLocalStorage } from '@/lib/useLocalStorage';
+import { useNotifications } from '@/lib/useNotifications';
 import { showToast } from '@/lib/useToast';
 
 import { useState, useCallback, useEffect, useRef } from "react";
@@ -41,10 +43,11 @@ export default function HomeContent() {
   const [url, setUrl] = useState("");
   const [urlError, setUrlError] = useState("");
   const [submitting, setSubmitting] = useState(false); // только время отправки запроса
-  const [segmentDuration, setSegmentDuration] = useState(60);
+  const [segmentDuration, setSegmentDuration] = useLocalStorage('narezka_segmentDuration', 60);
   const [startTime, setStartTime] = useState(null);
   const [endTime, setEndTime] = useState(null);
-  const [clipPrefix, setClipPrefix] = useState("");
+  const [clipPrefix, setClipPrefix] = useLocalStorage('narezka_clipPrefix', "");
+  const [videoDuration, setVideoDuration] = useState(null);
 
   // Глобальный Drag & Drop — перетаскивание файла в любое место страницы
   const [globalDragOver, setGlobalDragOver] = useState(false);
@@ -91,6 +94,7 @@ export default function HomeContent() {
 
   // Очередь задач: [{taskId, url, status, progress, result, error}]
   const [queue, setQueue] = useState([]);
+  const { notify, requestPermission } = useNotifications();
 
   const updateTask = useCallback((taskId, updates) => {
     setQueue(prev => prev.map(t => t.taskId === taskId ? { ...t, ...updates } : t));
@@ -115,6 +119,14 @@ export default function HomeContent() {
           clearInterval(interval);
           updateTask(taskId, { status: "done", progress: 100, result: data.result });
           showToast("✨ Готово!", "Клипы успешно нарезаны. Скачивай или смотри в истории.", { type: "success", duration: 6000 });
+          // Push-уведомление браузера (если пользователь на другой вкладке)
+          const clipsCount = data.result?.clips?.length ?? data.result?.total_clips ?? "";
+          notify("✨ Клипы готовы!", {
+            body: clipsCount
+              ? `Нарезано ${clipsCount} клипов. Нажми чтобы открыть.`
+              : "Нарезка завершена. Нажми чтобы открыть.",
+            tag: `narezka-done-${taskId}`,
+          });
         } else {
           updateTask(taskId, { status: data.status, progress: data.progress || 0 });
         }
@@ -123,7 +135,7 @@ export default function HomeContent() {
         updateTask(taskId, { status: "error", error: "Потеряно соединение с сервером." });
       }
     }, 1000);
-  }, [updateTask]);
+  }, [updateTask, notify]);
 
   const handleProcessUrl = async () => {
     if (!isValidUrl(url)) {
@@ -132,6 +144,8 @@ export default function HomeContent() {
     }
     setUrlError("");
     setSubmitting(true);
+    // Заранее запрашиваем разрешение до начала обработки
+    requestPermission();
 
     try {
       const response = await fetch(`${API_URL}/process-url/`, {
@@ -229,11 +243,12 @@ export default function HomeContent() {
                   onSubmit={handleProcessUrl}
                 />
 
-                <VideoPreview url={url} />
+                <VideoPreview url={url} onDuration={setVideoDuration} />
 
                 <RangePicker
                   startTime={startTime}
                   endTime={endTime}
+                  videoDuration={videoDuration}
                   onChange={(s, e) => { setStartTime(s); setEndTime(e); }}
                 />
 
