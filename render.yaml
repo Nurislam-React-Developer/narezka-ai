@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: narezka-backend
+    env: docker
+    dockerfilePath: ./backend/Dockerfile
+    plan: free
+    autoDeploy: true
