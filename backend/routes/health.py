@@ -13,7 +13,7 @@ router = APIRouter(tags=["System"])
 
 @router.get("/health", summary="Проверка работоспособности сервиса")
 async def health_check() -> dict:
-    """Возвращает статус сервиса, версию ffmpeg и pytubefix."""
+    """Возвращает статус сервиса, версию ffmpeg и yt-dlp."""
 
     def check_tool(cmd: list[str]) -> tuple[bool, str]:
         try:
@@ -25,22 +25,15 @@ async def health_check() -> dict:
         return False, "не найден"
 
     ffmpeg_ok, ffmpeg_ver = check_tool(["ffmpeg", "-version"])
-
-    try:
-        import pytubefix
-        pytubefix_ver = getattr(pytubefix, "__version__", "установлен")
-        pytubefix_ok = True
-    except ImportError:
-        pytubefix_ok = False
-        pytubefix_ver = "не установлен"
+    ytdlp_ok, ytdlp_ver = check_tool(["yt-dlp", "--version"])
 
     return {
         "status": "ok",
         "ffmpeg_available": ffmpeg_ok,
         "ffmpeg_version": ffmpeg_ver,
-        "downloader": "pytubefix",
-        "pytubefix_available": pytubefix_ok,
-        "pytubefix_version": pytubefix_ver,
+        "downloader": "yt-dlp",
+        "ytdlp_available": ytdlp_ok,
+        "ytdlp_version": ytdlp_ver,
         "inputs_dir": str(INPUTS_DIR),
         "outputs_dir": str(OUTPUTS_DIR),
     }

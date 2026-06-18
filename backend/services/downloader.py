@@ -1,21 +1,23 @@
 """
 services/downloader.py — Умный загрузчик:
-  • YouTube → pytubefix (HD до 1080p, без ботозащиты)
+  • YouTube → yt-dlp (HD до 1080p, обходит ботозащиту на серверах)
   • HLS (.m3u8), прямые MP4 и другие сайты → ffmpeg
 """
 
+import os
 import subprocess
 import shutil
 from pathlib import Path
 
 from fastapi import HTTPException
-from pytubefix import YouTube
-from pytubefix.cli import on_progress
 
 from services.task_manager import update_task_progress
 
 # Полный путь к ffmpeg (на macOS через Homebrew не попадает в PATH подпроцессов)
 FFMPEG_CMD = shutil.which("ffmpeg") or "/opt/homebrew/bin/ffmpeg"
+
+# Путь к файлу cookies для обхода ботозащиты YouTube (опционально, через env)
+YT_COOKIES_FILE = os.getenv("YT_COOKIES_FILE")
 
 
 # ─── Helpers ────────────────────────────────────────────────────────────────
@@ -28,15 +30,6 @@ def _is_direct_stream(url: str) -> bool:
     """HLS манифесты, mp4/webm прямые ссылки."""
     low = url.lower().split("?")[0]
     return any(low.endswith(ext) for ext in (".m3u8", ".mp4", ".webm", ".avi", ".mkv", ".ts", ".flv"))
-
-
-def _make_on_progress(task_id: str | None):
-    """Callbacks прогресса для pytubefix."""
-    def _callback(stream, chunk, bytes_remaining):
-        if task_id and stream.filesize:
-            pct = int(100 * (1 - bytes_remaining / stream.filesize))
-            update_task_progress(task_id, "downloading", pct)
-    return _callback if task_id else on_progress
 
 
 # ─── Public API ─────────────────────────────────────────────────────────────
@@ -57,54 +50,70 @@ def _download_sync(url: str, output_dir: Path, unique_prefix: str, task_id: str 
 
 
 def _download_youtube(url: str, output_dir: Path, unique_prefix: str, task_id: str | None) -> Path:
+    """Скачивает YouTube-видео (HD до 1080p) через yt-dlp.
+
+    yt-dlp устойчивее к ботозащите, чем pytubefix, и умеет работать с cookies
+    (через переменную окружения YT_COOKIES_FILE) для серверов в дата-центрах.
+    """
+    filename = f"{unique_prefix}_video.mp4"
+    output_path = output_dir / filename
+
+    if task_id:
+        update_task_progress(task_id, "downloading", 10)
+
+    cmd = [
+        "yt-dlp",
+        "-f", "bestvideo[height<=1080]+bestaudio/best[height<=1080]/best",
+        "--merge-output-format", "mp4",
+        "--no-playlist",
+        "--no-warnings",
+        "--ffmpeg-location", FFMPEG_CMD,
+        # Клиенты, которые чаще обходят ботозащиту YouTube на серверах
+        "--extractor-args", "youtube:player_client=android,web_safari,tv",
+        "-o", str(output_path),
+    ]
+
+    # Если заданы cookies — используем их (самый надёжный обход блокировки)
+    if YT_COOKIES_FILE and Path(YT_COOKIES_FILE).exists():
+        cmd += ["--cookies", YT_COOKIES_FILE]
+
+    cmd.append(url)
+
     try:
-        yt = YouTube(
-            url,
-            on_progress_callback=_make_on_progress(task_id),
-            use_oauth=False,
-            allow_oauth_cache=True,
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=3600,  # 1 час на скачивание
         )
 
-        safe_title = "".join(c for c in yt.title if c.isalnum() or c in " _-")[:60].strip()
-        filename = f"{unique_prefix}_{safe_title}.mp4"
-        final_output_path = output_dir / filename
+        if task_id:
+            update_task_progress(task_id, "downloading", 90)
 
-        def res_to_int(res_str: str) -> int:
-            return int(res_str.replace("p", "")) if res_str else 0
+        if result.returncode != 0:
+            err = (result.stderr or "Unknown error").strip()
+            # Распознаём типичную ботозащиту, чтобы дать понятную подсказку
+            if "Sign in to confirm" in err or "bot" in err.lower():
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "message": "YouTube заблокировал скачивание с сервера (ботозащита). "
+                                   "Нужны cookies — см. инструкцию.",
+                        "url": url,
+                    },
+                )
+            raise HTTPException(
+                status_code=400,
+                detail={"message": f"Ошибка YouTube: {err[-300:]}", "url": url},
+            )
 
-        # Ищем HD поток (adaptive / DASH) до 1080p
-        video_streams = yt.streams.filter(adaptive=True, type="video", file_extension="mp4")
-        valid_vid = [s for s in video_streams if res_to_int(s.resolution) <= 1080]
-        video_stream = sorted(valid_vid, key=lambda s: res_to_int(s.resolution))[-1] if valid_vid else None
-        audio_stream = yt.streams.filter(adaptive=True, type="audio").order_by("abr").last()
+        if not output_path.exists() or output_path.stat().st_size == 0:
+            raise HTTPException(status_code=500, detail="YouTube: файл скачан, но пуст или не найден.")
 
-        if video_stream and audio_stream:
-            # Скачиваем HD видео + аудио раздельно, потом сливаем ffmpeg
-            vid_path = video_stream.download(output_path=str(output_dir), filename=f"v_{filename}", skip_existing=False)
-            aud_path = audio_stream.download(output_path=str(output_dir), filename=f"a_{filename}", skip_existing=False)
+        return output_path
 
-            subprocess.run([
-                FFMPEG_CMD, "-y",
-                "-i", vid_path, "-i", aud_path,
-                "-c:v", "copy", "-c:a", "aac",
-                str(final_output_path)
-            ], capture_output=True, check=True)
-
-            Path(vid_path).unlink(missing_ok=True)
-            Path(aud_path).unlink(missing_ok=True)
-            result = final_output_path
-        else:
-            # Fallback на progressive поток
-            stream = yt.streams.get_highest_resolution()
-            if not stream:
-                raise HTTPException(status_code=400, detail={"message": "Нет доступных потоков.", "url": url})
-            output_path = stream.download(output_path=str(output_dir), filename=filename, skip_existing=False)
-            result = Path(output_path)
-
-        if not result.exists():
-            raise HTTPException(status_code=500, detail="YouTube: файл скачан, но не найден на диске.")
-        return result
-
+    except subprocess.TimeoutExpired as exc:
+        raise HTTPException(status_code=500, detail="Превышено время скачивания YouTube (1 час).") from exc
     except HTTPException:
         raise
     except Exception as exc:
