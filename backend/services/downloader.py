@@ -16,8 +16,33 @@ from services.task_manager import update_task_progress
 # Полный путь к ffmpeg (на macOS через Homebrew не попадает в PATH подпроцессов)
 FFMPEG_CMD = shutil.which("ffmpeg") or "/opt/homebrew/bin/ffmpeg"
 
-# Путь к файлу cookies для обхода ботозащиты YouTube (опционально, через env)
-YT_COOKIES_FILE = os.getenv("YT_COOKIES_FILE")
+
+def _resolve_cookies_file() -> str | None:
+    """Определяет файл cookies для обхода ботозащиты YouTube.
+
+    Поддерживает два способа (для серверов в дата-центрах):
+      • YT_COOKIES_FILE — путь к готовому файлу cookies.txt
+      • YT_COOKIES      — само содержимое cookies.txt (удобно для Render/Vercel:
+                          вставляешь текст в переменную окружения, файл
+                          создаётся автоматически при старте)
+    """
+    file_path = os.getenv("YT_COOKIES_FILE")
+    if file_path and Path(file_path).exists():
+        return file_path
+
+    content = os.getenv("YT_COOKIES")
+    if content and content.strip():
+        tmp = Path("/tmp/yt_cookies.txt")
+        try:
+            tmp.write_text(content)
+            return str(tmp)
+        except OSError:
+            return None
+
+    return None
+
+
+YT_COOKIES_FILE = _resolve_cookies_file()
 
 
 # ─── Helpers ────────────────────────────────────────────────────────────────
